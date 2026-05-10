@@ -1,3 +1,8 @@
+# ui.py - Main User Interface for Solar Mo Lang
+
+# =========================
+# IMPORTS
+# =========================
 import logging
 import datetime
 import tkinter as tk
@@ -7,7 +12,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import engine 
 
-# --- UI Configuration & Constants ---
+# =========================
+# FONTS AND THEMES
+# =========================
 def get_universal_font():
     try:
         root = tk.Tk(); root.withdraw()
@@ -18,47 +25,51 @@ def get_universal_font():
     except: return "sans-serif"
 
 FONT_NAME = get_universal_font()
+
 THEME = {
-    "bg_main": "#f8fafc",
-    "bg_sidebar": "#ffffff",
-    "card": "#ffffff",
-    "primary": "#2d8ab5",
-    "text_main": "#1e293b",
-    "text_sub": "#64748b",
-    "warning": "#fff7ed",
-    "warning_border": "#fb923c",
-    "accent": "#10b981",
-    "danger": "#ef4444",
-    "border": "#e2e8f0"
+    "bg_main": "#0f172a",        # Slate 900
+    "bg_sidebar": "#020617",     # Slate 950 (Deepest)
+    "card": "#1e293b",           # Slate 800
+    "primary": "#38bdf8",        # Sky Blue
+    "text_main": "#f8fafc",      # Slate 50
+    "text_sub": "#94a3b8",       # Slate 400
+    "accent": "#f59e0b",         # Amber
+    "border": "#334155",         # Slate 700
+    "danger": "#ef4444",         # Red
+    "success": "#22c55e",        # Green
+    "node_bg": "#1e293b",        # For Fault Line nodes
 }
 
+# =========================
+# CORE USER INTERFACE
+# =========================
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        ctk.set_appearance_mode("Light")
-        self.title("SolarSync SCADA Professional")
+        ctk.set_appearance_mode("Dark") # Forced Dark Mode
+        self.title("Solar Mo Lang")
         self.geometry("1200x900")
-        
-        # Core Application State
+        # --- ADD THIS LINE HERE ---
+        self.active_toasts = [] 
+        # --------------------------
         self.model = engine.DataModel(maxlen=500)
         self._running = True
         self.xp = 1904 
         self.level = 20
         self.current_user = None
         self.user_role = "System Administrator"
-        self.login_time = None
         self.current_view = "Dashboard"
         
-        # Toast/Notification State
-        self.active_toasts = []
-        self.creds = {
-            "admin": "1234",
-            "operator": "solar123"
-        }
+        # New Quest State
+        self.active_quests = [
+            {"id": 1, "title": "Peak Harvester", "desc": "Reach > 400W output for 10 mins", "progress": 0.6},
+            {"id": 2, "title": "Grid Independence", "desc": "Keep Battery > 80% for 2 hours", "progress": 0.2},
+            {"id": 3, "title": "Safety First", "desc": "Run thermal diagnostics", "progress": 1.0}
+        ]
 
+        self.creds = {"admin": "1234", "operator": "solar123"}
         self._build_login()
 
-    # --- Authentication Layer ---
     def _build_login(self):
         self.login_frame = ctk.CTkFrame(self, fg_color=THEME["bg_main"])
         self.login_frame.pack(fill="both", expand=True)
@@ -67,17 +78,17 @@ class App(ctk.CTk):
         inner.place(relx=0.5, rely=0.5, anchor="center")
         inner.pack_propagate(False)
         
-        ctk.CTkLabel(inner, text="☀️ SolarSync", font=(FONT_NAME, 32, "bold"), text_color=THEME["primary"]).pack(pady=(50, 10))
-        ctk.CTkLabel(inner, text="Secure SCADA Login", font=(FONT_NAME, 14), text_color=THEME["text_sub"]).pack(pady=(0, 30))
+        ctk.CTkLabel(inner, text="☀️ Solar Mo Lang", font=(FONT_NAME, 32, "bold"), text_color=THEME["primary"]).pack(pady=(50, 10))
+        ctk.CTkLabel(inner, text="Secure SML Login", font=(FONT_NAME, 14), text_color=THEME["text_sub"]).pack(pady=(0, 30))
+
+        self.u_ent = ctk.CTkEntry(inner, placeholder_text="Username", width=300, height=45, fg_color=THEME["bg_main"], border_color=THEME["border"]); self.u_ent.pack(pady=10)
+        self.p_ent = ctk.CTkEntry(inner, placeholder_text="Password", show="*", width=300, height=45, fg_color=THEME["bg_main"], border_color=THEME["border"]); self.p_ent.pack(pady=10)
         
-        self.u_ent = ctk.CTkEntry(inner, placeholder_text="Username", width=300, height=45); self.u_ent.pack(pady=10)
-        self.p_ent = ctk.CTkEntry(inner, placeholder_text="Password", show="*", width=300, height=45); self.p_ent.pack(pady=10)
-        
-        self.login_err = ctk.CTkLabel(inner, text="", text_color=THEME["danger"], font=(FONT_NAME, 12))
+        self.login_err = ctk.CTkLabel(inner, text="", text_color=THEME["danger"])
         self.login_err.pack(pady=5)
         
         ctk.CTkButton(inner, text="Authorize System Access", command=self._check_login, 
-                      fg_color=THEME["primary"], hover_color="#236d8e", width=300, height=45).pack(pady=20)
+                      fg_color=THEME["primary"], hover_color="#0284c7", text_color="#000000", width=300, height=45).pack(pady=20)
 
     def _check_login(self):
         u, p = self.u_ent.get().lower(), self.p_ent.get()
@@ -87,266 +98,442 @@ class App(ctk.CTk):
             self.login_frame.destroy()
             self._init_main_ui()
         else:
-            self.login_err.configure(text="Invalid credentials. Please try again.")
+            self.login_err.configure(text="Invalid credentials.")
 
-    def _handle_signout(self):
-        self._running = False
-        for widget in self.winfo_children(): widget.destroy()
-        self.__init__()
-
-    # --- Main UI Shell ---
     def _init_main_ui(self):
         self._running = True
         self.configure(fg_color=THEME["bg_main"])
         
-        # Sidebar Navigation
-        self.sidebar = ctk.CTkFrame(self, width=240, fg_color=THEME["bg_sidebar"], corner_radius=0, border_width=1, border_color=THEME["border"])
+        self.sidebar = ctk.CTkFrame(self, width=240, fg_color=THEME["bg_sidebar"], corner_radius=0)
         self.sidebar.pack(side="left", fill="y")
         
-        ctk.CTkLabel(self.sidebar, text="☀️ SolarSync", font=(FONT_NAME, 22, "bold"), text_color=THEME["primary"]).pack(pady=40, padx=25, anchor="w")
+        ctk.CTkLabel(self.sidebar, text="☀️ SolarSync", font=("Segoe UI", 22, "bold"), text_color=THEME["primary"]).pack(pady=40, padx=25, anchor="w")
         
         self.nav_btns = {}
-        nav_items = [
-            ("Dashboard", "📊"), ("Fault Line", "⚡"), 
-            ("Tips & Recs", "💡"), ("Rewards", "🏆")
-        ]
+        nav_items = [("Dashboard", "📊"), ("Fault Line", "⚡"), ("Tips & Recs", "💡"), ("Rewards", "🏆")]
         
         for item, icon in nav_items:
-            btn = ctk.CTkButton(self.sidebar, text=f"{icon}  {item}", anchor="w", font=(FONT_NAME, 14),
-                                fg_color="transparent", text_color=THEME["text_main"],
-                                hover_color="#f1f5f9", height=45, corner_radius=8,
+            btn = ctk.CTkButton(self.sidebar, text=f"{icon}  {item}", anchor="w", fg_color="transparent", 
+                                text_color=THEME["text_sub"], hover_color=THEME["card"], height=45,
                                 command=lambda x=item: self.switch_view(x))
             btn.pack(fill="x", padx=15, pady=5)
             self.nav_btns[item] = btn
 
-        # Personalized User Badge (Bottom of Sidebar)
-        user_panel = ctk.CTkFrame(self.sidebar, fg_color="#f8fafc", corner_radius=12, border_width=1, border_color=THEME["border"])
+        user_panel = ctk.CTkFrame(self.sidebar, fg_color=THEME["card"], corner_radius=12)
         user_panel.pack(side="bottom", fill="x", padx=15, pady=30)
-        
-        ctk.CTkLabel(user_panel, text=self.current_user, font=(FONT_NAME, 14, "bold"), text_color=THEME["text_main"]).pack(pady=(15, 0))
-        ctk.CTkLabel(user_panel, text=self.user_role, font=(FONT_NAME, 11), text_color=THEME["text_sub"]).pack()
-        
-        ctk.CTkButton(user_panel, text="Sign Out", font=(FONT_NAME, 12, "bold"), text_color=THEME["danger"],
-                      fg_color="transparent", hover_color="#fee2e2", command=self._handle_signout).pack(pady=10)
+        ctk.CTkLabel(user_panel, text=self.current_user, font=("Segoe UI", 14, "bold")).pack(pady=(15, 0))
+        ctk.CTkButton(user_panel, text="Sign Out", text_color=THEME["danger"], fg_color="transparent", command=self.destroy).pack(pady=10)
 
-        # View Container
         self.view_container = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.view_container.pack(side="right", fill="both", expand=True, padx=30, pady=20)
         
         self.switch_view("Dashboard")
         self._update_loop()
 
-    # --- View Manager ---
     def switch_view(self, view_name):
         self.current_view = view_name
         for name, btn in self.nav_btns.items():
             is_active = (name == view_name)
-            btn.configure(fg_color=THEME["primary"] if is_active else "transparent",
-                          text_color="white" if is_active else THEME["text_main"])
+            btn.configure(fg_color=THEME["card"] if is_active else "transparent", text_color=THEME["text_main"] if is_active else THEME["text_sub"])
         
         for child in self.view_container.winfo_children(): child.destroy()
         
-        # Header
         header = ctk.CTkFrame(self.view_container, fg_color="transparent")
         header.pack(fill="x", pady=(0, 25))
-        ctk.CTkLabel(header, text=view_name, font=(FONT_NAME, 32, "bold"), text_color=THEME["text_main"]).pack(side="left")
+        ctk.CTkLabel(header, text=view_name, font=("Segoe UI", 32, "bold"), text_color=THEME["text_main"]).pack(side="left")
         
         if view_name == "Dashboard": self._draw_dashboard()
         elif view_name == "Fault Line": self._draw_fault_line()
         elif view_name == "Tips & Recs": self._draw_tips()
         elif view_name == "Rewards": self._draw_rewards()
 
-    # --- Warning Popup (Toast) System ---
+    def _draw_dashboard(self):
+        # Alert Box
+        self.alert_box = ctk.CTkFrame(self.view_container, fg_color="#451a03", border_width=1, border_color=THEME["accent"])
+        self.alert_lbl = ctk.CTkLabel(self.alert_box, text="", text_color=THEME["accent"], font=("Segoe UI", 14, "bold"))
+        self.alert_lbl.pack(pady=15)
+        self.alert_box.pack_forget()
+
+        grid = ctk.CTkFrame(self.view_container, fg_color="transparent")
+        grid.pack(fill="x", pady=10); grid.columnconfigure((0,1,2,3), weight=1)
+        
+        self.cards = {}
+        specs = [("Battery Level", "batt"), ("Solar Output", "solar"), ("Efficiency", "eff"), ("Temperature", "temp")]
+        
+        for i, (title, key) in enumerate(specs):
+            card = ctk.CTkFrame(grid, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
+            card.grid(row=0, column=i, padx=10, sticky="nsew")
+            ctk.CTkLabel(card, text=title, text_color=THEME["text_sub"], font=("Segoe UI", 12)).pack(pady=(20,0))
+            v_lbl = ctk.CTkLabel(card, text="--", font=("Segoe UI", 28, "bold"), text_color=THEME["primary"])
+            v_lbl.pack(pady=(0, 20))
+            self.cards[key] = v_lbl
+
+        # Live Chart
+        chart_card = ctk.CTkFrame(self.view_container, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
+        chart_card.pack(fill="both", expand=True, pady=25)
+        self.fig, self.ax = plt.subplots(figsize=(10, 4), facecolor=THEME["card"])
+        self.ax.set_facecolor(THEME["card"])
+        self.canvas = FigureCanvasTkAgg(self.fig, chart_card)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=20, pady=20)
+        self.ax.set_title(
+            "Battery Telemetry",
+            color=THEME["text_main"],
+            fontsize=14,
+            fontweight="bold"
+        )
+
+        self.ax.set_xlabel(
+            "Time",
+            color=THEME["text_sub"],
+            fontsize=10
+        )
+
+        self.ax.set_ylabel(
+            "Battery %",
+            color=THEME["text_sub"],
+            fontsize=10
+        )
     def _trigger_toast(self, message, level="danger"):
-        # Prevent duplicate toasts for the same issue
+        # Safety check for the list we just added
+        if not hasattr(self, 'active_toasts'): self.active_toasts = []
+        
+        # Prevent duplicate toasts
         for t in self.active_toasts:
             if t['msg'] == message: return
 
-        color = THEME["danger"] if level == "danger" else THEME["warning_border"]
+        color = THEME["danger"] if level == "danger" else THEME["accent"]
         
-        toast = ctk.CTkFrame(self, fg_color=color, corner_radius=10, border_width=1, border_color="#ffffff")
-        toast.place(relx=0.98, rely=0.05, anchor="ne") # Top Right
+        # Create toast on 'self' but call lift() to put it above the scrollable frame
+        toast = ctk.CTkFrame(self, fg_color=color, corner_radius=10, border_width=2, border_color="#ffffff")
         
-        ctk.CTkLabel(toast, text=f"⚠️ {message}", text_color="white", font=(FONT_NAME, 13, "bold"), padx=20, pady=15).pack()
+        # Place it top-right
+        toast.place(relx=0.97, rely=0.05, anchor="ne")
+        
+        # CRITICAL: This pulls the toast to the very front of the UI
+        toast.lift() 
+        
+        ctk.CTkLabel(toast, text=f"⚠️ {message}", text_color="white", 
+                     font=(FONT_NAME, 13, "bold"), padx=20, pady=15).pack()
         
         toast_data = {'widget': toast, 'msg': message}
         self.active_toasts.append(toast_data)
         
-        # Auto-destruct after 5 seconds
         self.after(5000, lambda: self._remove_toast(toast_data))
-
+    
     def _remove_toast(self, toast_data):
         if toast_data in self.active_toasts:
             toast_data['widget'].destroy()
             self.active_toasts.remove(toast_data)
 
-    # --- Specific Views ---
-    def _draw_dashboard(self):
-        # Alert Banner (Static Warnings)
-        self.alert_box = ctk.CTkFrame(self.view_container, fg_color=THEME["warning"], border_width=1, border_color=THEME["warning_border"])
-        self.alert_lbl = ctk.CTkLabel(self.alert_box, text="", text_color=THEME["warning_border"], font=(FONT_NAME, 14, "bold"))
-        self.alert_lbl.pack(pady=15)
-        self.alert_box.pack_forget()
-
-        # Metrics Grid
-        self.cards = {}
-        grid = ctk.CTkFrame(self.view_container, fg_color="transparent")
-        grid.pack(fill="x", pady=10); grid.columnconfigure((0,1,2,3), weight=1)
-        
-        specs = [
-            ("Battery Level", "batt", "Health: Optimal"), 
-            ("Solar Output", "solar", "Input: Active"), 
-            ("Efficiency", "eff", "Grid: Tied"), 
-            ("Temperature", "temp", "Thermal: Stable")
-        ]
-        
-        for i, (title, key, sub) in enumerate(specs):
-            card = ctk.CTkFrame(grid, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
-            card.grid(row=0, column=i, padx=10, sticky="nsew")
-            ctk.CTkLabel(card, text=title, text_color=THEME["text_sub"], font=(FONT_NAME, 13, "bold")).pack(anchor="w", padx=20, pady=(20,0))
-            v_lbl = ctk.CTkLabel(card, text="--", font=(FONT_NAME, 28, "bold"), text_color=THEME["text_main"])
-            v_lbl.pack(anchor="w", padx=20)
-            ctk.CTkLabel(card, text=f"● {sub}", font=(FONT_NAME, 11), text_color=THEME["accent"]).pack(anchor="w", padx=20, pady=(5,20))
-            self.cards[key] = v_lbl
-
-        # Detailed Chart Section
-        chart_card = ctk.CTkFrame(self.view_container, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
-        chart_card.pack(fill="both", expand=True, pady=25)
-        
-        ctk.CTkLabel(chart_card, text="Battery Voltage Trends (Live)", font=(FONT_NAME, 16, "bold"), text_color=THEME["text_main"]).pack(anchor="w", padx=25, pady=(20, 0))
-        
-        self.fig, self.ax = plt.subplots(figsize=(10, 4), dpi=100)
-        self.fig.patch.set_facecolor(THEME["card"])
-        self.ax.set_facecolor("#fcfcfc")
-        self.canvas = FigureCanvasTkAgg(self.fig, chart_card)
-        self.canvas.get_tk_widget().pack(fill="both", expand=True, padx=20, pady=20)
-
     def _draw_fault_line(self):
-        # Connection Status Overview
-        status_card = ctk.CTkFrame(self.view_container, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
-        status_card.pack(fill="x", pady=10)
+        # Container
+        flow_container = ctk.CTkFrame(self.view_container, fg_color=THEME["bg_sidebar"], 
+                                     height=550, corner_radius=15, border_width=1, border_color=THEME["border"])
+        flow_container.pack(fill="x", pady=20, padx=10)
         
-        ctk.CTkLabel(status_card, text="System Connectivity Map", font=(FONT_NAME, 18, "bold")).pack(side="left", padx=25, pady=25)
-        ctk.CTkLabel(status_card, text="System Optimal", fg_color=THEME["accent"], text_color="white", corner_radius=8, padx=15, pady=5, font=(FONT_NAME, 12, "bold")).pack(side="right", padx=25)
+        # IMPORTANT: Force the UI to process the 'pack' so it has a width/height
+        self.update_idletasks()
 
-        # Elaborate Flowchart Representation
-        flow_frame = ctk.CTkFrame(self.view_container, fg_color="white", height=450, corner_radius=15, border_width=1, border_color=THEME["border"])
-        flow_frame.pack(fill="x", pady=20)
+        # Canvas
+        canvas = tk.Canvas(flow_container, bg=THEME["bg_sidebar"], highlightthickness=0)
+        canvas.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        node_map = {
+            "pv": ["Solar Array", 0.15, 0.5, "PV Input"],
+            "inv": ["Inverter", 0.40, 0.5, "DC/AC Sync"],
+            "bat": ["Battery Bank", 0.65, 0.25, "Storage"],
+            "grid": ["Main Grid", 0.65, 0.75, "Utility"],
+            "load": ["Home Load", 0.90, 0.5, "Consumption"]
+        }
+
+        # Use absolute coordinates derived from the forced update
+        w = flow_container.winfo_width()
+        h = flow_container.winfo_height()
+
+        # Connections logic
+        connections = [("pv", "inv"), ("inv", "bat"), ("inv", "grid"), ("bat", "load"), ("grid", "load")]
         
-        nodes = [
-            ("Solar Array", 0.1, 0.4, "DC Power Source"),
-            ("Inverter Unit", 0.35, 0.4, "DC to AC Conversion"),
-            ("Battery Bank", 0.65, 0.2, "Energy Storage"),
-            ("Main Switch", 0.65, 0.6, "Power Routing"),
-            ("AC Load / Home", 0.9, 0.4, "Terminal Output")
-        ]
-        
-        for name, px, py, desc in nodes:
-            n = ctk.CTkFrame(flow_frame, fg_color="#f1f5f9", width=160, height=100, corner_radius=10, border_width=1, border_color="#cbd5e1")
-            n.place(relx=px, rely=py, anchor="center")
-            ctk.CTkLabel(n, text=name, font=(FONT_NAME, 13, "bold"), text_color=THEME["text_main"]).place(relx=0.5, rely=0.35, anchor="center")
-            ctk.CTkLabel(n, text=desc, font=(FONT_NAME, 10), text_color=THEME["text_sub"]).place(relx=0.5, rely=0.65, anchor="center")
-            ctk.CTkLabel(n, text="● Connected", font=(FONT_NAME, 9, "bold"), text_color=THEME["accent"]).place(relx=0.5, rely=0.85, anchor="center")
+        for start, end in connections:
+            x1, y1 = node_map[start][1] * w, node_map[start][2] * h
+            x2, y2 = node_map[end][1] * w, node_map[end][2] * h
+            canvas.create_line(x1, y1, x2, y2, fill=THEME["primary"], width=2, dash=(10, 5))
+
+        # Create UI Nodes
+        for key, data in node_map.items():
+            n = ctk.CTkFrame(flow_container, fg_color=THEME["card"], width=150, height=90, 
+                             corner_radius=10, border_width=1, border_color=THEME["primary"])
+            # We place the frame AFTER the line is drawn to ensure it sits on top
+            n.place(relx=data[1], rely=data[2], anchor="center")
+            
+            ctk.CTkLabel(n, text=data[0], font=(FONT_NAME, 12, "bold"), text_color=THEME["primary"]).place(relx=0.5, rely=0.3, anchor="center")
+            ctk.CTkLabel(n, text=data[3], font=(FONT_NAME, 10), text_color=THEME["text_sub"]).place(relx=0.5, rely=0.6, anchor="center")
+            ctk.CTkLabel(n, text="● ONLINE", font=(FONT_NAME, 9, "bold"), text_color=THEME["success"]).place(relx=0.5, rely=0.85, anchor="center")
 
     def _draw_tips(self):
-        # Knowledge Base Sections
-        sections = [
-            ("Current Insights", [
-                ("Efficiency", "Run heavy appliances during peak sun hours (10 AM - 3 PM) for 0% grid impact."),
-                ("Optimization", "Check for shading on panel 4; current yield is 12% lower than neighbors.")
-            ]),
-            ("Maintenance Log", [
-                ("Panels", "Next cleaning cycle due in 14 days to maintain 98% transmittance."),
-                ("Inverter", "Firmware v2.4 available. Update to improve conversion efficiency by 1.2%.")
-            ]),
-            ("Safety Protocols", [
-                ("Thermal", "Battery temp is rising. Ensure ventilation fans are clear of debris."),
-                ("Emergency", "Manual shut-off switch is located on the North side of the inverter.")
-            ])
+        # Tip categories for better organization
+        tip_categories = [
+            {
+                "category": "⚡ Energy Optimization",
+                "color": THEME["primary"],
+                "items": [
+                    ("Heavy Loads", "Run high-drain appliances (washers, dishwashers) between 11 AM - 2 PM to utilize peak solar harvest."),
+                    ("Stagger Usage", "Avoid starting the oven and dryer simultaneously; stagger heavy loads to prevent grid draw."),
+                    ("Phantom Power", "Disable standby mode on non-essential electronics to save up to 5% of daily battery reserve.")
+                ]
+            },
+            {
+                "category": "🧹 Maintenance & Care",
+                "color": THEME["success"],
+                "items": [
+                    ("Panel Cleaning", "Bird droppings or thick dust can drop efficiency by 25%. A soft rinse is recommended every 3 months."),
+                    ("Vegetation Check", "Trim northern-side branches. Even a 5% shadow on one panel can bottle-neck an entire string."),
+                    ("Inverter Airflow", "Ensure at least 15cm of clearance around the inverter; dust the cooling fins to prevent thermal throttling.")
+                ]
+            },
+            {
+                "category": "⚠️ Critical Safety & Warnings",
+                "color": THEME["danger"],
+                "items": [
+                    ("Hot Spot Alert", "If one panel shows significantly lower voltage, check for 'hot spots' or cracked glass immediately."),
+                    ("Battery Health", "Avoid discharging below 15%. Frequent deep cycles significantly reduce LiFePO4 lifespans."),
+                    ("Storm Protocol", "In case of lightning, use the SCADA 'Soft Shutdown' to protect sensitive inverter logic boards.")
+                ]
+            }
         ]
-        
-        for title, items in sections:
-            ctk.CTkLabel(self.view_container, text=title, font=(FONT_NAME, 20, "bold")).pack(anchor="w", pady=(20, 10))
-            row = ctk.CTkFrame(self.view_container, fg_color="transparent")
-            row.pack(fill="x")
+
+        for cat in tip_categories:
+            # Category Header
+            ctk.CTkLabel(self.view_container, text=cat["category"], 
+                         font=(FONT_NAME, 20, "bold"), text_color=cat["color"]).pack(anchor="w", pady=(25, 10), padx=5)
             
-            for tag, msg in items:
-                c = ctk.CTkFrame(row, fg_color=THEME["card"], corner_radius=12, border_width=1, border_color=THEME["border"])
-                c.pack(side="left", padx=10, pady=5, fill="both", expand=True)
+            # Grid/Container for items in this category
+            cat_frame = ctk.CTkFrame(self.view_container, fg_color="transparent")
+            cat_frame.pack(fill="x")
+            
+            for title, msg in cat["items"]:
+                c = ctk.CTkFrame(cat_frame, fg_color=THEME["card"], corner_radius=12, border_width=1, border_color=THEME["border"])
+                c.pack(fill="x", pady=5, padx=5)
                 
-                tag_clr = "#dcfce7" if tag == "Efficiency" else "#fee2e2" if tag == "Thermal" else "#fef3c7"
-                tag_txt = "#166534" if tag == "Efficiency" else "#991b1b" if tag == "Thermal" else "#92400e"
-                
-                ctk.CTkLabel(c, text=tag, fg_color=tag_clr, text_color=tag_txt, corner_radius=5, font=(FONT_NAME, 10, "bold"), padx=10).pack(anchor="w", padx=15, pady=15)
-                ctk.CTkLabel(c, text=msg, wraplength=300, font=(FONT_NAME, 13), justify="left").pack(anchor="w", padx=15, pady=(0, 20))
+                # Title and Message
+                ctk.CTkLabel(c, text=title, text_color=cat["color"], font=(FONT_NAME, 13, "bold")).pack(anchor="w", padx=20, pady=(15, 0))
+                ctk.CTkLabel(c, text=msg, font=(FONT_NAME, 13), text_color=THEME["text_main"], wraplength=800, justify="left").pack(anchor="w", padx=20, pady=(5, 15))
 
     def _draw_rewards(self):
-        # Elaborate User Details
-        profile = ctk.CTkFrame(self.view_container, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
+
+    # Progress Overview
+        profile = ctk.CTkFrame(
+            self.view_container,
+            fg_color=THEME["card"],
+            corner_radius=15
+        )
         profile.pack(fill="x", pady=10)
+
+    # LEVEL LABEL
+        self.lvl_lbl = ctk.CTkLabel(
+            profile,
+            text=f"Lvl {self.level}",
+            font=("Segoe UI", 48, "bold"),
+            text_color=THEME["accent"]
+        )
+        self.lvl_lbl.pack(side="right", padx=40)
+
+        ctk.CTkLabel(
+            profile,
+            text=f"Operator: {self.current_user}",
+        font=("Segoe UI", 22, "bold")
+        ).pack(anchor="w", padx=30, pady=(30, 0))
+
+    # XP LABEL
+        self.xp_label = ctk.CTkLabel(
+            profile,
+            text=f"{self.xp} Total XP Accumulated",
+            font=("Segoe UI", 14),
+            text_color=THEME["text_sub"]
+        )
+        self.xp_label.pack(anchor="w", padx=30, pady=(5, 20))
+
+    # XP PROGRESS BAR
+        self.p_bar = ctk.CTkProgressBar(
+            profile,
+            width=400,
+            progress_color=THEME["primary"]
+        )
+
+        self.p_bar.set((self.xp % 100) / 100)
+        self.p_bar.pack(anchor="w", padx=30, pady=(0, 30))
+
+    # Quest System
+        ctk.CTkLabel(
+            self.view_container,
+            text="Active SolarQuests",
+            font=("Segoe UI", 20, "bold")
+        ).pack(anchor="w", pady=(30, 10))
+
+        for quest in self.active_quests:
+
+            q_box = ctk.CTkFrame(
+                self.view_container,
+                fg_color=THEME["card"],
+                border_width=1,
+                border_color=THEME["border"]
+            )
+            q_box.pack(fill="x", pady=5)
+
+            ctk.CTkLabel(
+                q_box,
+                text=quest["title"],
+                font=("Segoe UI", 14, "bold"),
+                text_color=THEME["primary"]
+            ).pack(side="left", padx=20, pady=20)
+
+            ctk.CTkLabel(
+                q_box,
+                text=quest["desc"],
+                font=("Segoe UI", 12),
+                text_color=THEME["text_sub"]
+            ).pack(side="left", padx=10)
+
+            p = ctk.CTkProgressBar(
+                q_box,
+                width=200,
+                progress_color=(
+                    THEME["success"]
+                    if quest["progress"] >= 1
+                    else THEME["primary"]
+                )
+            )
+
+            p.set(quest["progress"])
+            p.pack(side="right", padx=20)
         
-        left = ctk.CTkFrame(profile, fg_color="transparent")
-        left.pack(side="left", padx=30, pady=30)
-        ctk.CTkLabel(left, text=f"User: {self.current_user}", font=(FONT_NAME, 24, "bold")).pack(anchor="w")
-        ctk.CTkLabel(left, text=f"Role: {self.user_role}", font=(FONT_NAME, 14), text_color=THEME["text_sub"]).pack(anchor="w")
-        ctk.CTkLabel(left, text=f"Session Start: {self.login_time}", font=(FONT_NAME, 12), text_color=THEME["text_sub"]).pack(anchor="w")
-
-        # Progress Logic
-        target_xp = self.level * 100 + 100
-        progress = self.xp / target_xp
-
-        stats = ctk.CTkFrame(profile, fg_color="transparent")
-        stats.pack(side="right", padx=30)
-        ctk.CTkLabel(stats, text=f"Level {self.level}", font=(FONT_NAME, 48, "bold"), text_color="#f59e0b").pack()
-        ctk.CTkLabel(stats, text=f"{self.xp} Total XP Accumulated", font=(FONT_NAME, 14, "bold")).pack()
-
-        # Large Progress Bar
-        bar_card = ctk.CTkFrame(self.view_container, fg_color=THEME["card"], corner_radius=15, border_width=1, border_color=THEME["border"])
-        bar_card.pack(fill="x", pady=20)
-        
-        ctk.CTkLabel(bar_card, text=f"Progress to Level {self.level + 1}", font=(FONT_NAME, 16, "bold")).pack(pady=(25, 5))
-        p_bar = ctk.CTkProgressBar(bar_card, fg_color="#e2e8f0", progress_color=THEME["primary"], height=15)
-        p_bar.set(progress); p_bar.pack(fill="x", padx=100, pady=20)
-        ctk.CTkLabel(bar_card, text=f"{self.xp} / {target_xp} XP", font=(FONT_NAME, 12, "bold")).pack(pady=(0, 25))
-
-    # --- System Update Loop ---
     def _update_loop(self):
-        if not self._running: return
+        # Check if the app is still supposed to be running
+        if not self._running: 
+            return
+
         try:
+            # Fetch the latest data from the engine
             data = engine.sync_sensors()
+            if not data:
+                return
+            
+            # Add reading to the model for the graph
             self.model.add_reading(data)
             
-            # Update Rewards State
-            self.xp += engine.calculate_xp(data)
-            self.level = self.xp // 100 + 1
+            # Update XP & Leveling Logic
+            gained_xp = engine.calculate_xp(data)
+            self.xp += gained_xp
+            self.level = (self.xp // 100) + 1
+
+            # --- WARNING & TOAST TRIGGERS ---
+            # These check every 2 seconds regardless of which view you are in
             
-            # Dashboard Specific Updates
+            # Critical Battery Check
+            if data.get('battery', 100) < 20:
+                self._trigger_toast("CRITICAL ENERGY: Battery < 20%", "danger")
+            
+            # Thermal Check (Solar output affects temp)
+            temp_val = 24 + (data.get('solar', 0) // 120)
+            if temp_val > 45:
+                self._trigger_toast(f"THERMAL ALERT: System Hot ({temp_val}°C)", "danger")
+
+            # Efficiency Check
+            efficiency = int(data.get('solar', 0) / 4.5)
+            if data.get('solar', 0) > 100 and efficiency < 10:
+                self._trigger_toast("LOW EFFICIENCY: Possible Shading", "warning")
+
+            # Low Power / Night Mode
+            if data.get('solar', 0) < 10 and data.get('battery', 0) < 30:
+                self._trigger_toast("CONSERVATION MODE: Low Input", "warning")
+
+            # --- VIEW SPECIFIC UPDATES ---
+            
+            # Dashboard Updates (Cards & Graph)
             if self.current_view == "Dashboard":
                 self.cards["batt"].configure(text=f"{data.get('battery')}%")
                 self.cards["solar"].configure(text=f"{data.get('solar')}W")
-                self.cards["eff"].configure(text=f"{int(data.get('solar',0)/4.5)}%")
-                self.cards["temp"].configure(text=f"{24 + (data.get('solar',0)//120)}°C")
-                
-                # Logic for WARNING POPUPS (Toasts)
-                if data.get('battery') < 20:
-                    self._trigger_toast("CRITICAL ENERGY RESERVE: Battery < 20%", "danger")
-                if data.get('solar') > 450:
-                    self._trigger_toast("High Solar Irradiance Detected", "warning")
-                
-                # Update Graph
+                self.cards["eff"].configure(text=f"{efficiency}%")
+                self.cards["temp"].configure(text=f"{temp_val}°C")
+                warning_message = None
+
+                if data.get('battery', 100) < 20:
+                    warning_message = "CRITICAL: Battery below 20%"
+
+                elif temp_val > 45:
+                    warning_message = f"THERMAL ALERT: {temp_val}°C"
+
+                elif efficiency < 10:
+                    warning_message = "LOW EFFICIENCY DETECTED"
+
+                elif data.get('solar', 0) < 10:
+                    warning_message = "LOW SOLAR INPUT"
+
+            # SHOW / HIDE ALERT BOX
+                if warning_message:
+                    self.alert_lbl.configure(text=warning_message)
+                    self.alert_box.pack(fill="x", pady=(0, 15))
+                else:
+                    self.alert_box.pack_forget()
+                # Live Graph Update
                 self.ax.clear()
-                hist = self.model.get_recent('battery', 30)
-                self.ax.plot(hist, color=THEME['primary'], linewidth=3)
-                self.ax.fill_between(range(len(hist)), hist, color=THEME['primary'], alpha=0.1)
-                self.ax.set_ylim(0, 100)
-                self.ax.axis('off')
+                self.ax.set_title(
+                    "Battery Telemetry",
+                    color=THEME["text_main"],
+                    fontsize=14,
+                    fontweight="bold"
+                )
+
+                self.ax.set_xlabel(
+                    "Time",
+                    color=THEME["text_sub"],
+                    fontsize=10
+                )
+
+                self.ax.set_ylabel(
+                    "Battery %",
+                    color=THEME["text_sub"],
+                    fontsize=10
+                )
+                hist = self.model.get_recent('battery', 20)
+                self.ax.plot(hist, color=THEME['primary'], linewidth=2)
+                self.ax.set_facecolor(THEME["card"])
+                self.ax.tick_params(colors=THEME['text_sub'], labelsize=8)
+                for spine in self.ax.spines.values(): 
+                    spine.set_visible(False)
+                self.ax.grid(True, alpha=0.1, color=THEME['text_sub'])
                 self.canvas.draw()
+
+            # Rewards Updates (Progress Bar & XP Label)
+            elif self.current_view == "Rewards":
+                if hasattr(self, 'p_bar') and hasattr(self, 'xp_label'):
+                    progress = (self.xp % 100) / 100
+                    self.p_bar.set(progress)
+                    self.xp_label.configure(text=f"{self.xp} Total XP Accumulated")
+                    if hasattr(self, 'lvl_lbl'):
+                        self.lvl_lbl.configure(text=f"Lvl {self.level}")
+
+                        
 
         except Exception as e:
             logging.error(f"UI Update Failed: {e}")
             
+        # Re-schedule the loop (2000ms = 2 seconds)
         self.after(2000, self._update_loop)
-
-    def shutdown(self):
+        
+    def shutdown(self): 
         self._running = False
         self.destroy()
+
+
+"""
+    developer's note: the program is structured to allow easy expansion of features.
+    additionally, the program isn't yet meant to be used for arduino and is running randomly generated data, 
+    but the engine module is designed to be easily adaptable for real sensor integration in the future. 
+    for the tips and recommendations section, the current implementation is static, 
+    but it can be enhanced to use real-time data and machine learning for personalized insights.
+
+    further recommendations: compiling every files and making an executable file using pyinstaller or similar tools, 
+        and adding a settings page for user preferences and system configurations. 
+        additionally, a database integration could be implemented for long-term data 
+        storage and historical analysis.
+"""
