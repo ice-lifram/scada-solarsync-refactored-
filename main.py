@@ -1,5 +1,5 @@
 """
-Main entry point for the SolarSync SCADA application.
+Main entry point for the Solar Mo Lang
 Run this file to start the program.
 """
 import sys
